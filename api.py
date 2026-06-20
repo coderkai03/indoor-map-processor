@@ -25,6 +25,7 @@ import networkx as nx
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from process_maps import (
     analyze_floorplan,
@@ -51,6 +52,16 @@ app.add_middleware(
 
 BUILDINGS_DIR = Path("./output/buildings")
 BUILDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+STATIC_DIR = Path("./static")
+
+
+@app.get("/", include_in_schema=False)
+def root():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 SUPPORTED_MIME = {"image/png", "image/jpeg"}
 

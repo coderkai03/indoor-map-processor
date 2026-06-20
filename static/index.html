@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IndoorNav — Test Console</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 28px;
+    }
+
+    .card {
+      background: #1e2230;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+
+    .card h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 16px;
+    }
+
+    .step-badge {
+      display: inline-block;
+      background: #3b4fd8;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 6px;
+      padding: 2px 8px;
+      margin-right: 8px;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .file-label {
+      display: inline-block;
+      background: #2d3348;
+      border: 1px dashed #4a5568;
+      border-radius: 8px;
+      padding: 14px 20px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #94a3b8;
+      width: 100%;
+      text-align: center;
+      margin-bottom: 12px;
+      transition: background 0.15s;
+    }
+    .file-label:hover { background: #374060; }
+    .file-label.has-file { border-color: #3b4fd8; color: #a5b4fc; }
+
+    button {
+      background: #3b4fd8;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    button:hover { background: #4f63e8; }
+    button:disabled { background: #2d3348; color: #4a5568; cursor: not-allowed; }
+
+    .result-box {
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+    .result-box.visible { display: block; }
+
+    .stat-row {
+      display: flex;
+      gap: 16px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      padding: 10px 16px;
+      flex: 1;
+      min-width: 120px;
+      text-align: center;
+    }
+    .stat .val {
+      font-size: 24px;
+      font-weight: 700;
+      color: #a5b4fc;
+    }
+    .stat .lbl {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .overlay-img {
+      width: 100%;
+      border-radius: 8px;
+      margin-top: 12px;
+      border: 1px solid #2d3348;
+      display: none;
+    }
+    .overlay-img.visible { display: block; }
+
+    select {
+      background: #0f1117;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      color: #e2e8f0;
+      padding: 10px 12px;
+      font-size: 14px;
+      width: 100%;
+      margin-bottom: 12px;
+      appearance: none;
+    }
+    select:focus { outline: none; border-color: #3b4fd8; }
+
+    .route-steps {
+      margin-top: 16px;
+      display: none;
+    }
+    .route-steps.visible { display: block; }
+
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid #2d3348;
+    }
+    .step-item:last-child { border-bottom: none; }
+
+    .step-num {
+      width: 24px;
+      height: 24px;
+      background: #3b4fd8;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+    .step-coord {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .distance-badge {
+      background: #1a3a2a;
+      color: #4ade80;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      display: inline-block;
+      margin-top: 8px;
+    }
+
+    .error-box {
+      background: #2d1a1a;
+      border: 1px solid #7f1d1d;
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+    .error-box.visible { display: block; }
+
+    .loading {
+      color: #64748b;
+      font-size: 13px;
+      margin-top: 8px;
+      display: none;
+    }
+    .loading.visible { display: block; }
+
+    .building-id-chip {
+      background: #1a2a3a;
+      border: 1px solid #2d4a6a;
+      color: #7dd3fc;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-family: monospace;
+      display: inline-block;
+      margin-top: 8px;
+      word-break: break-all;
+    }
+
+    .section-disabled {
+      opacity: 0.4;
+      pointer-events: none;
+    }
+
+    .api-url-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      align-items: center;
+    }
+    .api-url-row input[type="text"] {
+      flex: 1;
+      background: #1e2230;
+      border: 1px solid #2d3348;
+      border-radius: 8px;
+      color: #e2e8f0;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: monospace;
+    }
+    .api-url-row input[type="text"]:focus {
+      outline: none;
+      border-color: #3b4fd8;
+    }
+    .api-url-label {
+      font-size: 12px;
+      color: #64748b;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<h1>IndoorNav — Test Console</h1>
+<p class="subtitle">Simulates what the iOS app does. Use this to verify the backend is working before iOS integration.</p>
+
+<!-- API URL config -->
+<div class="api-url-row">
+  <span class="api-url-label">API base URL:</span>
+  <input type="text" id="apiBase" value="" placeholder="http://localhost:8000" />
+</div>
+
+<!-- Step 1: Upload -->
+<div class="card" id="uploadCard">
+  <h2><span class="step-badge">1</span>Upload Floor Plan</h2>
+  <label class="file-label" id="fileLabel" for="fileInput">
+    Click to choose a PNG or JPEG floor plan image
+  </label>
+  <input type="file" id="fileInput" accept="image/png,image/jpeg" />
+  <button id="uploadBtn" disabled>Upload & Process</button>
+  <div class="loading" id="uploadLoading">Sending to Gemini vision API — this takes 10–30 seconds...</div>
+  <div class="error-box" id="uploadError"></div>
+
+  <div class="result-box" id="uploadResult">
+    <div>Building processed successfully.</div>
+    <div class="building-id-chip" id="buildingIdDisplay"></div>
+    <div class="stat-row">
+      <div class="stat"><div class="val" id="nodeCount">—</div><div class="lbl">Rooms / Nodes</div></div>
+      <div class="stat"><div class="val" id="edgeCount">—</div><div class="lbl">Connections / Edges</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Overlay -->
+<div class="card section-disabled" id="overlayCard">
+  <h2><span class="step-badge">2</span>View Extracted Map</h2>
+  <p style="font-size:13px;color:#64748b;margin-bottom:12px;">
+    This shows the AI's interpretation of the floor plan — rooms as red dots, walkable paths as cyan lines.
+    Check this to verify Gemini got the rooms right.
+  </p>
+  <button id="overlayBtn">Load Overlay Image</button>
+  <img class="overlay-img" id="overlayImg" alt="Floor plan overlay" />
+</div>
+
+<!-- Step 3: Route -->
+<div class="card section-disabled" id="routeCard">
+  <h2><span class="step-badge">3</span>Find a Route (simulates iPhone request)</h2>
+  <p style="font-size:13px;color:#64748b;margin-bottom:16px;">
+    Pick a start and destination. This is exactly the call the iOS app makes.
+  </p>
+  <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:6px;">From</label>
+  <select id="fromSelect"><option value="">— pick a room —</option></select>
+  <label style="font-size:13px;color:#94a3b8;display:block;margin-bottom:6px;">To</label>
+  <select id="toSelect"><option value="">— pick a room —</option></select>
+  <button id="routeBtn">Get Route</button>
+  <div class="loading" id="routeLoading">Calculating shortest path...</div>
+  <div class="error-box" id="routeError"></div>
+
+  <div class="route-steps" id="routeSteps">
+    <div class="distance-badge" id="distanceBadge"></div>
+    <div id="stepsList"></div>
+  </div>
+</div>
+
+<script>
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  function api() {
+    const val = document.getElementById('apiBase').value.trim();
+    return val || window.location.origin;
+  }
+
+  function show(el) { el.classList.add('visible'); }
+  function hide(el) { el.classList.remove('visible'); }
+  function enable(card) { card.classList.remove('section-disabled'); }
+
+  let currentBuildingId = null;
+  let currentNodes = [];
+
+  // ── File picker ─────────────────────────────────────────────────────────────
+
+  const fileInput = document.getElementById('fileInput');
+  const fileLabel = document.getElementById('fileLabel');
+  const uploadBtn = document.getElementById('uploadBtn');
+
+  // Set default API base to current origin
+  document.getElementById('apiBase').value = window.location.origin;
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) {
+      fileLabel.textContent = fileInput.files[0].name;
+      fileLabel.classList.add('has-file');
+      uploadBtn.disabled = false;
+    }
+  });
+
+  // ── Upload ──────────────────────────────────────────────────────────────────
+
+  uploadBtn.addEventListener('click', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    uploadBtn.disabled = true;
+    hide(document.getElementById('uploadResult'));
+    hide(document.getElementById('uploadError'));
+    show(document.getElementById('uploadLoading'));
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`${api()}/buildings/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+
+      currentBuildingId = data.building_id;
+      document.getElementById('buildingIdDisplay').textContent = data.building_id;
+      document.getElementById('nodeCount').textContent = data.node_count;
+      document.getElementById('edgeCount').textContent = data.edge_count;
+
+      hide(document.getElementById('uploadLoading'));
+      show(document.getElementById('uploadResult'));
+      uploadBtn.disabled = false;
+
+      // Unlock next sections
+      enable(document.getElementById('overlayCard'));
+      enable(document.getElementById('routeCard'));
+
+      // Load nodes for route dropdowns
+      await loadNodes();
+
+    } catch (err) {
+      hide(document.getElementById('uploadLoading'));
+      const box = document.getElementById('uploadError');
+      box.textContent = `Error: ${err.message}`;
+      show(box);
+      uploadBtn.disabled = false;
+    }
+  });
+
+  // ── Overlay ─────────────────────────────────────────────────────────────────
+
+  document.getElementById('overlayBtn').addEventListener('click', () => {
+    if (!currentBuildingId) return;
+    const img = document.getElementById('overlayImg');
+    img.src = `${api()}/buildings/${currentBuildingId}/overlay?t=${Date.now()}`;
+    show(img);
+  });
+
+  // ── Nodes / route dropdowns ──────────────────────────────────────────────────
+
+  async function loadNodes() {
+    if (!currentBuildingId) return;
+    const res = await fetch(`${api()}/buildings/${currentBuildingId}/nodes`);
+    const data = await res.json();
+    currentNodes = data.nodes;
+
+    const fromSel = document.getElementById('fromSelect');
+    const toSel = document.getElementById('toSelect');
+    [fromSel, toSel].forEach(sel => {
+      sel.innerHTML = '<option value="">— pick a room —</option>';
+      currentNodes.forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        opt.textContent = n.name;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  // ── Route ───────────────────────────────────────────────────────────────────
+
+  document.getElementById('routeBtn').addEventListener('click', async () => {
+    const from = document.getElementById('fromSelect').value;
+    const to = document.getElementById('toSelect').value;
+
+    if (!from || !to) {
+      const box = document.getElementById('routeError');
+      box.textContent = 'Please select both a start and a destination.';
+      show(box);
+      return;
+    }
+    if (from === to) {
+      const box = document.getElementById('routeError');
+      box.textContent = 'Start and destination are the same room.';
+      show(box);
+      return;
+    }
+
+    hide(document.getElementById('routeError'));
+    hide(document.getElementById('routeSteps'));
+    show(document.getElementById('routeLoading'));
+
+    try {
+      const res = await fetch(
+        `${api()}/buildings/${currentBuildingId}/route?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+      );
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+      hide(document.getElementById('routeLoading'));
+
+      document.getElementById('distanceBadge').textContent =
+        `Total distance: ${Math.round(data.total_distance_px)} px  ·  ${data.step_count} stops`;
+
+      const list = document.getElementById('stepsList');
+      list.innerHTML = '';
+      data.steps.forEach((step, i) => {
+        const div = document.createElement('div');
+        div.className = 'step-item';
+        div.innerHTML = `
+          <div class="step-num">${i + 1}</div>
+          <div>
+            <div class="step-name">${step.name}</div>
+            <div class="step-coord">x: ${step.x}, y: ${step.y}</div>
+          </div>`;
+        list.appendChild(div);
+      });
+
+      show(document.getElementById('routeSteps'));
+
+    } catch (err) {
+      hide(document.getElementById('routeLoading'));
+      const box = document.getElementById('routeError');
+      box.textContent = `Error: ${err.message}`;
+      show(box);
+    }
+  });
+</script>
+</body>
+</html>
