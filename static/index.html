@@ -262,6 +262,59 @@
       color: #64748b;
       white-space: nowrap;
     }
+
+    .log-panel {
+      background: #080b10;
+      border: 1px solid #1e2a1e;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      display: none;
+    }
+    .log-panel.visible { display: block; }
+
+    .log-header {
+      background: #111a11;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #4ade80;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .log-timer {
+      font-size: 12px;
+      font-family: monospace;
+      color: #facc15;
+    }
+
+    .log-entries {
+      padding: 12px 14px;
+      max-height: 200px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .log-entry { color: #94a3b8; }
+    .log-entry.info { color: #94a3b8; }
+    .log-entry.gemini { color: #a78bfa; }
+    .log-entry.success { color: #4ade80; }
+    .log-entry.warn { color: #facc15; }
+    .log-entry.error { color: #f87171; }
+    .log-ts { color: #374151; margin-right: 6px; }
+    .log-tag { margin-right: 6px; }
+    .log-tag.tag-upload { color: #38bdf8; }
+    .log-tag.tag-gemini { color: #a78bfa; }
+    .log-tag.tag-graph  { color: #34d399; }
+    .log-tag.tag-render { color: #fb923c; }
+    .log-tag.tag-done   { color: #4ade80; }
+    .log-tag.tag-error  { color: #f87171; }
   </style>
 </head>
 <body>
@@ -273,6 +326,15 @@
 <div class="api-url-row">
   <span class="api-url-label">API base URL:</span>
   <input type="text" id="apiBase" value="" placeholder="http://localhost:8000" />
+</div>
+
+<!-- Live log panel -->
+<div class="log-panel" id="logPanel">
+  <div class="log-header">
+    <span>Pipeline Log</span>
+    <span class="log-timer" id="logTimer"></span>
+  </div>
+  <div class="log-entries" id="logEntries"></div>
 </div>
 
 <!-- Step 1: Upload -->
@@ -342,13 +404,47 @@
   let currentBuildingId = null;
   let currentNodes = [];
 
+  // ── Log panel ──────────────────────────────────────────────────────────────
+
+  const logPanel = document.getElementById('logPanel');
+  const logEntries = document.getElementById('logEntries');
+  const logTimer = document.getElementById('logTimer');
+  let timerInterval = null;
+  let timerStart = null;
+
+  function addLog(tag, msg, type = 'info') {
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const entry = document.createElement('div');
+    entry.className = `log-entry ${type}`;
+    entry.innerHTML = `<span class="log-ts">${ts}</span><span class="log-tag tag-${tag}">[${tag}]</span>${msg}`;
+    logEntries.appendChild(entry);
+    logEntries.scrollTop = logEntries.scrollHeight;
+    show(logPanel);
+  }
+
+  function clearLog() {
+    logEntries.innerHTML = '';
+    logTimer.textContent = '';
+  }
+
+  function startTimer() {
+    timerStart = Date.now();
+    timerInterval = setInterval(() => {
+      const s = ((Date.now() - timerStart) / 1000).toFixed(1);
+      logTimer.textContent = `⏱ ${s}s`;
+    }, 100);
+  }
+
+  function stopTimer() {
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  }
+
   // ── File picker ─────────────────────────────────────────────────────────────
 
   const fileInput = document.getElementById('fileInput');
   const fileLabel = document.getElementById('fileLabel');
   const uploadBtn = document.getElementById('uploadBtn');
 
-  // Set default API base to current origin
   document.getElementById('apiBase').value = window.location.origin;
 
   fileInput.addEventListener('change', () => {
@@ -370,19 +466,33 @@
     hide(document.getElementById('uploadError'));
     show(document.getElementById('uploadLoading'));
 
+    clearLog();
+    const sizeKB = Math.round(file.size / 1024);
+    addLog('upload', `Selected: ${file.name} (${sizeKB} KB, ${file.type})`);
+    addLog('upload', `Sending to server at ${api()}...`);
+    startTimer();
+
+    // Gemini takes a while — show a reminder after 5s and 15s so user knows it's alive
+    const reminder5  = setTimeout(() => addLog('gemini', 'Still waiting for Gemini... (this is normal, usually 10–30s)', 'gemini'), 5000);
+    const reminder15 = setTimeout(() => addLog('gemini', 'Gemini is thinking deeply — complex floor plans can take up to 45s', 'gemini'), 15000);
+
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-      const res = await fetch(`${api()}/buildings/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+      const res = await fetch(`${api()}/buildings/upload`, { method: 'POST', body: formData });
+      clearTimeout(reminder5);
+      clearTimeout(reminder15);
+      stopTimer();
+
       const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.detail || `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+      addLog('gemini', `Gemini responded in ${data.gemini_time_s}s`, 'gemini');
+      addLog('graph',  `Graph: ${data.node_count} nodes, ${data.edge_count} edges`, 'success');
+      addLog('done',   `Total pipeline: ${data.processing_time_s}s  ✓`, 'success');
+      logTimer.textContent = `done in ${data.processing_time_s}s`;
 
       currentBuildingId = data.building_id;
       document.getElementById('buildingIdDisplay').textContent = data.building_id;
@@ -393,14 +503,16 @@
       show(document.getElementById('uploadResult'));
       uploadBtn.disabled = false;
 
-      // Unlock next sections
       enable(document.getElementById('overlayCard'));
       enable(document.getElementById('routeCard'));
-
-      // Load nodes for route dropdowns
       await loadNodes();
 
     } catch (err) {
+      clearTimeout(reminder5);
+      clearTimeout(reminder15);
+      stopTimer();
+      addLog('error', `Failed: ${err.message}`, 'error');
+      logTimer.textContent = 'failed';
       hide(document.getElementById('uploadLoading'));
       const box = document.getElementById('uploadError');
       box.textContent = `Error: ${err.message}`;

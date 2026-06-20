@@ -16,8 +16,10 @@ Endpoints:
 
 from __future__ import annotations
 
+import datetime
 import json
 import shutil
+import time as _time
 import uuid
 from pathlib import Path
 
@@ -66,6 +68,11 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 SUPPORTED_MIME = {"image/png", "image/jpeg"}
 
 
+def _log(tag: str, msg: str) -> None:
+    ts = datetime.datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] [{tag}] {msg}", flush=True)
+
+
 def _building_dir(building_id: str) -> Path:
     return BUILDINGS_DIR / building_id
 
@@ -108,31 +115,40 @@ async def upload_building(file: UploadFile = File(...)):
             detail=f"Unsupported file type '{file.content_type}'. Upload PNG or JPEG.",
         )
 
+    t_start = _time.time()
     building_id = str(uuid.uuid4())
     bdir = _building_dir(building_id)
     bdir.mkdir(parents=True, exist_ok=True)
 
-    # Determine extension from content type.
+    _log("upload", f"Received '{file.filename}' ({file.content_type}) → building_id={building_id}")
+
     ext = ".png" if file.content_type == "image/png" else ".jpg"
     image_path = bdir / f"floor_plan{ext}"
 
-    # Save uploaded file to disk.
     with image_path.open("wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    # Run the pipeline using existing functions from process_maps.py.
+    file_size_kb = image_path.stat().st_size // 1024
+    _log("upload", f"Saved to disk ({file_size_kb} KB)")
+
     try:
         image_bgr, width, height = load_image(image_path)
     except ValueError as exc:
         shutil.rmtree(bdir, ignore_errors=True)
         raise HTTPException(status_code=422, detail=str(exc))
 
+    _log("upload", f"Image loaded: {width}×{height} px")
+
     image_bytes = image_path.read_bytes()
     mime_type = "image/png" if ext == ".png" else "image/jpeg"
 
     try:
         client = get_client()
+        _log("gemini", "Sending image to Gemini 2.5 Flash — waiting for structured output...")
+        t_gemini = _time.time()
         floorplan = analyze_floorplan(client, image_bytes, mime_type, width, height)
+        gemini_elapsed = _time.time() - t_gemini
+        _log("gemini", f"Response received in {gemini_elapsed:.1f}s — {len(floorplan.nodes)} nodes, {len(floorplan.edges)} edges")
     except EnvironmentError as exc:
         shutil.rmtree(bdir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=str(exc))
@@ -140,15 +156,26 @@ async def upload_building(file: UploadFile = File(...)):
         shutil.rmtree(bdir, ignore_errors=True)
         raise HTTPException(status_code=502, detail=f"Vision API error: {exc}")
 
+    _log("graph", "Building networkx graph with Euclidean edge weights...")
     graph = build_graph(floorplan)
+    _log("graph", f"Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
+
     export_graph(graph, width, height, out_path=_graph_path(building_id))
+    _log("export", f"Graph JSON saved → {_graph_path(building_id)}")
+
     render_overlay(image_bgr, graph, out_path=_overlay_path(building_id))
+    _log("render", f"Overlay PNG saved → {_overlay_path(building_id)}")
+
+    total_elapsed = _time.time() - t_start
+    _log("done", f"Pipeline complete in {total_elapsed:.1f}s  |  building_id={building_id}")
 
     return {
         "building_id": building_id,
         "node_count": graph.number_of_nodes(),
         "edge_count": graph.number_of_edges(),
         "image": {"width": width, "height": height},
+        "processing_time_s": round(total_elapsed, 1),
+        "gemini_time_s": round(gemini_elapsed, 1),
     }
 
 
