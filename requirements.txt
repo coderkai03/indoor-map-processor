@@ -1,0 +1,7 @@
+google-genai
+opencv-python
+networkx
+matplotlib
+pydantic
+numpy
+python-dotenv

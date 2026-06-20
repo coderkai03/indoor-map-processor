@@ -1,0 +1,7 @@
+.venv/
+.env
+output/
+maps/*
+!maps/.gitkeep
+__pycache__/
+*.pyc
