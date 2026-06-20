@@ -30,35 +30,108 @@ logic, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 Requires Python 3.11 and a [Gemini API key](https://aistudio.google.com/apikey).
 
 ```bash
-# Create / activate a virtualenv
+# Create and activate a virtualenv
 python -m venv .venv
+
 source .venv/Scripts/activate          # Git Bash on Windows
-# .\.venv\Scripts\Activate.ps1         # PowerShell
-# source .venv/bin/activate            # macOS / Linux
+.\.venv\Scripts\Activate.ps1           # PowerShell on Windows
+source .venv/bin/activate              # macOS / Linux
 
 pip install -r requirements.txt
-
-# Configure the API key
-cp .env.example .env                   # then edit .env and set GEMINI_API_KEY
 ```
 
-The key is read from `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) in the environment or a `.env`
-file. The pipeline exits with a clear message if it is missing.
+Set your Gemini API key — create a `.env` file in the project root:
 
-## Usage
+```
+GEMINI_API_KEY=your_key_here
+```
 
-1. Drop one or more floor plan images (PNG/JPEG) into `./maps/`.
-2. Run the pipeline:
+The pipeline exits with a clear message if the key is missing.
 
-   ```bash
-   python process_maps.py
-   ```
+## Running the API server
 
-3. Find the results in `./output/`:
-   - **`building_graph.json`** — the graph topology for the iOS client.
-   - **`vector_map_overlay.png`** — the graph drawn over the original floor plan.
+```bash
+uvicorn api:app --host 0.0.0.0 --port 8000 --reload
+```
 
-All images in `./maps/` are processed in one run; the latest results overwrite `./output/`.
+Then open **http://localhost:8000** in your browser. You'll see the test console where you
+can upload a floor plan, inspect the AI-generated overlay, and test pathfinding — all
+without needing the iOS app.
+
+### Expose to the internet (required for iOS)
+
+During development, use [ngrok](https://ngrok.com) to give the server a public HTTPS URL
+so an iPhone can reach it over the venue WiFi:
+
+```bash
+ngrok http 8000
+```
+
+ngrok prints a URL like `https://abc123.ngrok.io`. Share that with the iOS team and paste
+it into the "API base URL" field in the test console.
+
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Browser test console |
+| `POST` | `/buildings/upload` | Upload a floor plan image, run the full pipeline |
+| `GET` | `/buildings/{id}/graph` | Full navigation graph JSON |
+| `GET` | `/buildings/{id}/nodes` | All nodes (for destination search / autocomplete) |
+| `GET` | `/buildings/{id}/route?from=X&to=Y` | Shortest path between two node IDs |
+| `GET` | `/buildings/{id}/overlay` | QA overlay PNG |
+
+Auto-generated interactive docs: **http://localhost:8000/docs**
+
+### Example: upload a floor plan
+
+```bash
+curl -X POST http://localhost:8000/buildings/upload \
+  -F "file=@maps/floor_plan.png"
+```
+
+Response:
+```json
+{
+  "building_id": "3f2a1b...",
+  "node_count": 18,
+  "edge_count": 21,
+  "image": { "width": 737, "height": 830 },
+  "processing_time_s": 13.1,
+  "gemini_time_s": 12.3
+}
+```
+
+### Example: get a route
+
+```bash
+curl "http://localhost:8000/buildings/3f2a1b.../route?from=lobby&to=room_101"
+```
+
+Response:
+```json
+{
+  "steps": [
+    { "id": "lobby",              "name": "Lobby",              "x": 80,  "y": 80 },
+    { "id": "hallway_junction_1", "name": "Hallway Junction",   "x": 180, "y": 80 },
+    { "id": "room_101",           "name": "Room 101",           "x": 300, "y": 120 }
+  ],
+  "total_distance_px": 232.5,
+  "step_count": 3
+}
+```
+
+## Running the CLI pipeline (without the server)
+
+Drop floor plan images into `./maps/` and run:
+
+```bash
+python process_maps.py
+```
+
+Results are written to `./output/`:
+- **`building_graph.json`** — graph topology for the iOS client
+- **`vector_map_overlay.png`** — graph drawn over the original floor plan
 
 ## Output format
 
@@ -78,27 +151,29 @@ All images in `./maps/` are processed in one run; the latest results overwrite `
 ```
 
 Coordinates are pixels in the source image (origin top-left). `weight` is the Euclidean
-pixel distance between the connected nodes.
+pixel distance between connected nodes.
 
 ## Error handling
 
-- **Missing API key** — exits cleanly before any API call.
-- **API timeout / transient failure** — 60s request timeout, with retry and backoff.
-- **Corrupt or invalid image** — that file is skipped; remaining images still process.
-- **Malformed model output** — Pydantic validates the schema; edges referencing unknown
-  nodes are dropped with a warning rather than crashing the run.
+- **Missing API key** — exits cleanly before any API call with a clear message
+- **API timeout / transient failure** — 60s request timeout with retry and exponential backoff
+- **Corrupt or invalid image** — that file is skipped; remaining images still process
+- **Malformed model output** — Pydantic validates the schema; edges referencing unknown nodes are dropped with a warning
 
 ## Project layout
 
 ```
-process_maps.py     # the pipeline (schema + stage functions + orchestrator)
+api.py               # FastAPI server (5 endpoints + browser test console)
+process_maps.py      # pipeline (schema + stage functions + CLI orchestrator)
+static/index.html    # browser test console UI
 docs/ARCHITECTURE.md # in-depth architecture and stage-by-stage logic
-requirements.txt    # dependencies
-.env.example        # API key template
-maps/               # input floor plan images (you provide)
-output/             # generated graph JSON + overlay PNG
+requirements.txt     # dependencies
+.env                 # API key (create this, not committed)
+maps/                # input floor plan images (you provide)
+output/              # generated graph JSON + overlay PNG
+output/buildings/    # per-building folders created by the API server
 ```
 
 ## Tech stack
 
-OpenCV · Google GenAI SDK (Gemini 2.5 Flash) · Pydantic · networkx · matplotlib
+FastAPI · uvicorn · OpenCV · Google GenAI SDK (Gemini 2.5 Flash) · Pydantic · networkx · matplotlib
